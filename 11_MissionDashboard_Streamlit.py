@@ -56,7 +56,7 @@ st.sidebar.info(
     "Earth Observation Mission Simulator\n\n"
     "48 Satellite Walker Constellation\n"
     "Altitude : 536 km\n"
-    "Inclination : 98°"
+    "Inclination : 50°"
 )
 
 # -------------------------------------------------------
