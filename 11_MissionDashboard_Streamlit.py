@@ -31,6 +31,15 @@ ground = pd.read_excel(
 constellation = pd.read_excel(
     os.path.join(BASE_DIR, "ConstellationPerformance.xlsx")
 )
+eclipse_file = os.path.join(BASE_DIR, "All_Eclipse_Events.xlsx")
+
+try:
+    eclipse_df = pd.read_excel(eclipse_file)
+    # Strip any accidental whitespace from column names
+    eclipse_df.columns = eclipse_df.columns.str.strip() 
+except Exception as e:
+    # Fallback to empty dataframe if file reading fails
+    eclipse_df = pd.DataFrame()
 
 # -------------------------------------------------------
 # SIDEBAR
@@ -74,7 +83,8 @@ def get_metric(name):
 # -------------------------------------------------------
 
 
-page = st.sidebar.radio("Navigation",["Mission Overview","Satellite Performance","Ground Station","Constellation","Charts"])
+page = st.sidebar.radio("Navigation",["Mission Overview","Satellite Performance","Ground Station","Constellation","🌑 Eclipse Analysis", "Charts"])
+                                      
 if page == "Mission Overview":
 
     logo = os.path.join(BASE_DIR, "assets", "logo.png")
@@ -529,11 +539,196 @@ elif page == "Constellation":
             fig,
             use_container_width=True
         )
+
+#------------------
+# ECLIPSE ANALYSIS
+#------------------
+elif page == "🌑 Eclipse Analysis":
+
+    st.title("🌑 Eclipse Analysis")
+
+    if eclipse_df.empty:
+        st.error("No Eclipse Report Found")
+        st.stop()
+
+    # ----------------------------
+    # Satellite Filter
+    # ----------------------------
+
+    satellites = ["All Satellites"] + sorted(
+        eclipse_df["Satellite"].unique()
+    )
+
+    selected_sat = st.selectbox(
+        "Select Satellite",
+        satellites
+    )
+
+    if selected_sat != "All Satellites":
+        df = eclipse_df[
+            eclipse_df["Satellite"] == selected_sat
+        ]
+    else:
+        df = eclipse_df.copy()
+
+    # ----------------------------
+    # KPIs
+    # ----------------------------
+
+    total_events = len(df)
+    # Detect duration column automatically
+    duration_col = None
+
+    if "Duration (sec)" in df.columns:
+        duration_col = "Duration (sec)"
+    elif "Duration (s)" in df.columns:
+        duration_col = "Duration (s)"
+    else:
+        st.error("Duration column not found.")
+        st.stop()
+
+    # Convert to numeric
+    df = df.copy()
+    df[duration_col] = pd.to_numeric(df[duration_col], errors="coerce")
+    df = df.dropna(subset=[duration_col])
+
+    total_duration = df[duration_col].sum()
+    avg_duration = df[duration_col].mean()
+    longest = df[duration_col].max()
+    shortest = df[duration_col].min()
+
+    c1,c2,c3,c4,c5 = st.columns(5)
+    c1.metric("Events", total_events)
+
+    c2.metric(
+        "Total Hours",
+        round(total_duration/3600,2)
+    )
+
+    c3.metric(
+        "Average (sec)",
+        round(avg_duration,2)
+    )
+
+    c4.metric(
+        "Longest",
+        round(longest,2)
+    )
+
+    c5.metric(
+        "Shortest",
+        round(shortest,2)
+    )
+
+    st.markdown("---")
+
+    # ----------------------------
+    # Pie Chart
+    # ----------------------------
+
+    st.subheader("Umbra vs Penumbra")
+    st.write(df.columns)
+    st.write(df.head())
+    st.write("Columns:", df.columns.tolist())
+    st.write(df.head())
+    fig = px.pie(
+        df,
+        names="Eclipse Type",
+        title="Eclipse Type"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ----------------------------
+
+    st.subheader("Duration Histogram")
+
+    fig = px.histogram(
+        df,
+        x="Duration (sec)",
+        nbins=40
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ----------------------------
+
+    st.subheader("Total Eclipse Hours")
+
+    hrs = (
+        df.groupby("Satellite")["Duration (sec)"]
+        .sum()/3600
+    ).reset_index()
+
+    fig = px.bar(
+        hrs,
+        x="Satellite",
+        y="Duration (sec)"
+    )
+
+    fig.update_xaxes(tickangle=90)
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ----------------------------
+
+    st.subheader("Sunlight vs Eclipse")
+
+    mission_seconds = 86400
+
+    eclipse_seconds = total_duration
+
+    sunlight = max(0, mission_seconds - eclipse_seconds)
+
+    eclipse_counts = (
+        df["Eclipse Type"]
+        .value_counts()
+        .reset_index()
+    )
+
+    eclipse_counts.columns = ["Eclipse Type", "Count"]
+
+    fig = px.pie(
+        eclipse_counts,
+        names="Eclipse Type",
+        values="Count",
+        title="Eclipse Type Distribution"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+    # ----------------------------
+    st.subheader("Eclipse Timeline")
+
+    fig = px.timeline(
+        df,
+        x_start="Start UTC",
+        x_end="Stop UTC",
+        y="Satellite",
+        color="Eclipse Type"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.subheader("Complete Eclipse Report")
+
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True
+    )
+
+    st.download_button(
+        "📥 Download Eclipse Report",
+        df.to_csv(index=False),
+        "EclipseReport.csv",
+        "text/csv"
+    )
+
 # -------------------------------------------------------
 # CHARTS
 # -------------------------------------------------------
 
-elif page == "Charts":
+if page == "Charts":
 
     st.title("📈 Mission Charts")
 
